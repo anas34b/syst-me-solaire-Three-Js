@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>système solaire</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 5px;
+            background-color: white;
+            border: 1px solid black;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://threejs.org/build/three.module.js"
+            }
+        }
+    </script>   
+    <script type="module">
+        import * as THREE from "three";
+        import { OrbitControls } from "https://threejs.org/examples/jsm/controls/OrbitControls.js";
+
+        // Création d'une nouvelle scène Three.js. C'est l'espace où tous les objets 3D seront placés.
+        var scene = new THREE.Scene();
+        // Création d'une caméra perspective. C'est l'œil à travers lequel nous verrons notre univers 3D.
+        var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // Création d'un nouveau rendu WebGL. Cela permet de dessiner la scène dans le navigateur en utilisant WebGL.
+        var renderer = new THREE.WebGLRenderer();
+        // Définition de la taille du rendu à la taille de la fenêtre du navigateur.
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        // Ajout de l'élément de rendu (une balise canvas) au corps du document HTML.
+        document.body.appendChild(renderer.domElement);
+
+        // Ajout de la texture d'espace en arrière-plan
+        var spaceTexture = new THREE.TextureLoader().load('textures/2k_espace.jpg');
+        scene.background = spaceTexture;
+
+        // Chargement de la texture du soleil
+        var sunTexture = new THREE.TextureLoader().load('textures/2k_sun.jpg');
+        // Création du matériau du soleil avec la texture chargée
+        var sunMaterial = new THREE.MeshBasicMaterial({ map: sunTexture });
+        // Création de la géométrie du soleil (une sphère) et application du matériau
+        var sun = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), sunMaterial);
+        scene.add(sun);
+
+        // Création d'une lumière ponctuelle blanche positionnée à l'origine (la position du soleil)
+        var sunlight = new THREE.PointLight(0xffffff, 1, 0);
+        sunlight.position.set(0, 0, 0);
+        scene.add(sunlight);
+
+        // Création d'une lumière ambiante avec une couleur gris foncé (0x404040) pour éclairer uniformément tous les objets de la scène.
+        var ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        var planetsData = [
+            { name: 'Mercury', texture: 'textures/2k_mercury.jpg', distance: 2, size: 0.1, speed: 0.002 },
+            { name: 'Venus', texture: 'textures/2k_venus.jpg', distance: 3, size: 0.2, speed: 0.0018 },
+            { name: 'Earth', texture: 'textures/2k_earth.jpg', distance: 4, size: 0.2, speed: 0.0016 },
+            { name: 'Mars', texture: 'textures/2k_mars.jpg', distance: 5, size: 0.15, speed: 0.0014 },
+            { name: 'Jupiter', texture: 'textures/2k_jupiter.jpg', distance: 7, size: 0.5, speed: 0.0012 },
+            { name: 'Saturn', texture: 'textures/2k_saturn.jpg', distance: 9, size: 0.4, speed: 0.001 },
+            { name: 'Uranus', texture: 'textures/2k_uranus.jpg', distance: 11, size: 0.3, speed: 0.0008 },
+            { name: 'Neptune', texture: 'textures/2k_neptune.jpg', distance: 13, size: 0.3, speed: 0.0006 },
+        ];
+
+        var planets = [];
+        var orbits = [];
+        planetsData.forEach(data => {
+            var planetTexture = new THREE.TextureLoader().load(data.texture);
+            var planetMaterial = new THREE.MeshPhongMaterial({ map: planetTexture });
+            var planet = new THREE.Mesh(new THREE.SphereGeometry(data.size, 32, 32), planetMaterial);
+            planet.position.x = data.distance;
+            scene.add(planet);
+            planets.push({ object: planet, speed: data.speed, distance: data.distance, angle: 0 });
+
+            // Création de la géométrie de l'orbite en utilisant un tableau de points calculés en fonction de la distance de la planète.
+            var orbitGeometry = new THREE.BufferGeometry().setFromPoints( 
+                new Array(64).fill(null).map((_, i) => { 
+                    var angle = (i / 64) * Math.PI * 2; 
+                    return new THREE.Vector3(Math.cos(angle) * data.distance, Math.sin(angle) * data.distance, 0); 
+                })
+            );
+            // Création du matériau et de la ligne de l'orbite, puis ajout de l'orbite à la scène et stockage dans le tableau orbits.
+            var orbitMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+            var orbit = new THREE.LineLoop(orbitGeometry, orbitMaterial);
+            orbits.push(orbit);
+            scene.add(orbit);
+
+            // Moon
+            // Si la planète est la Terre, ajout d'une lune avec sa propre texture, matériau, et géométrie.
+            if (data.name === 'Earth') {
+                var moonTexture = new THREE.TextureLoader().load('textures/2k_moon.jpg');
+                var moonMaterial = new THREE.MeshPhongMaterial({ map: moonTexture });
+                var moon = new THREE.Mesh(new THREE.SphereGeometry(0.05, 32, 32), moonMaterial);
+                moon.position.x = 0.5; // Distance from Earth
+                planet.add(moon);
+            }
+
+            // Saturn Ring
+            // Si la planète est Saturne, ajout d'un anneau avec sa propre texture, matériau, et géométrie.
+            if (data.name === 'Saturn') {
+                var ringTexture = new THREE.TextureLoader().load('textures/2k_saturn_ring.png');
+                var ringMaterial = new THREE.MeshPhongMaterial({ map: ringTexture, side: THREE.DoubleSide, transparent: true });
+                // Création de la géométrie de l'anneau pour Saturne.
+                var ringGeometry = new THREE.RingGeometry(0.55, 0.85, 32);
+                var ring = new THREE.Mesh(ringGeometry, ringMaterial);
+                planet.add(ring);
+            }
+        });
+
+        camera.position.z = 20;
+
+        var controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 0, 0); // Cible le point (0,0,0) dans l'espace
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.25;
+        controls.screenSpacePanning = true; // Active le déplacement dans l'espace de l'écran
+        controls.maxPolarAngle = Math.PI;
+
+        var raycaster = new THREE.Raycaster(); // Ajout du raycaster
+        var mouse = new THREE.Vector2();
+
+        function onMouseDown(event) {
+            event.preventDefault();
+            
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+            
+            var intersects = raycaster.intersectObjects(scene.children, true);
+            
+            if (intersects.length > 0) {
+                controls.target.copy(intersects[0].point);
+            }
+        }
+
+        renderer.domElement.addEventListener('mousedown', onMouseDown, false); // Ajout de l'événement mousedown
+
+        // Création et ajout du panneau de contrôle au corps du document.
+        var controlPanel = document.createElement('div');
+        controlPanel.id = 'controls';
+        document.body.appendChild(controlPanel);
+
+        // Création et ajout du contrôle de vitesse au panneau de contrôle.
+        var speedControl = document.createElement('input');
+        speedControl.type = 'range';
+        speedControl.min = '0.1';
+        speedControl.max = '200';
+        speedControl.step = '0.1';
+        speedControl.value = '1';
+        var speedLabel = document.createElement('label');
+        speedLabel.textContent = 'Speed';
+        speedLabel.appendChild(speedControl);
+        controlPanel.appendChild(speedLabel);
+
+        // Création et ajout du contrôle de lumière du soleil au panneau de contrôle.
+        var lightControl = document.createElement('input');
+        lightControl.type = 'range';
+        lightControl.min = '0';
+        lightControl.max = '200';
+        lightControl.step = '0.1';
+        lightControl.value = '1';
+        var lightLabel = document.createElement('label');
+        lightLabel.textContent = 'Sunlight';
+        lightLabel.appendChild(lightControl);
+        controlPanel.appendChild(lightLabel);
+
+        // Création et ajout du contrôle de lumière du soleil au panneau de contrôle.
+        var orbitControl = document.createElement('input');
+        orbitControl.type = 'checkbox';
+        orbitControl.checked = true;
+        var orbitLabel = document.createElement('label');
+        orbitLabel.textContent = 'Show Orbits';
+        orbitLabel.appendChild(orbitControl);
+        controlPanel.appendChild(orbitLabel);
+
+        var animate = function () {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            planets.forEach(planet => {
+                planet.angle += planet.speed * speedControl.value;
+                planet.object.position.x = Math.cos(planet.angle) * planet.distance;
+                planet.object.position.y = Math.sin(planet.angle) * planet.distance;
+            });
+
+            // Ajuste l'intensité de la lumière du soleil en fonction de la valeur du contrôle de lumière.
+            sunlight.intensity = parseFloat(lightControl.value);
+
+            // Pour chaque orbite, définit sa visibilité en fonction de l'état de la case à cocher du contrôle d'orbite.
+            orbits.forEach(orbit => {
+                orbit.visible = orbitControl.checked;
+            });
+
+            renderer.render(scene, camera);
+        };
+
+        animate();
+    </script>
+</body>
+</html>
